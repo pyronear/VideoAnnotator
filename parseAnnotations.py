@@ -211,24 +211,26 @@ class AnnotationParser:
 
             return pd.Series(x).rename(index=class_to_aname)
 
-        DFS = [
-            d['av'].apply(splitKeypointValues),  # annotation info
-            pd.DataFrame([xy[0:3] for xy in d.xy.tolist() if xy], columns=['dummy', 'x', 'y']),  # formating xy to prevent mapping errors with unstable JSON file nnotation values
-            pd.DataFrame([z[0:1] for z in d.z.tolist() if z], columns=['t']),  # formating z to prevent mapping errors with unstable JSON file annotation values
-        ]
-        d = d.join(DFS).drop(columns=['fid', 'xy', 'av', 'dummy', 'vid', 'z', 'spatial'], errors='ignore')
-        # Adding columns to match standards csv files. Relevant if JSON file only contains unexploitables videos where none of those columns are created
-        if 'fire' not in d:
-            d.insert(6,'fire',float('nan'))
-            d.insert(7,'sequence',float('nan'))
-            d.insert(8,'clf_confidence',float('nan'))
-            d.insert(9,'loc_confidence',float('nan'))
+        try:
+            DFS = [
+                d['av'].apply(splitKeypointValues),  # annotation info
+                pd.DataFrame([xy for xy in d.xy.tolist()], columns=['dummy', 'x', 'y']),
+                pd.DataFrame([z for z in d.z.tolist()], columns=['t'])
+            ]
+            d = d.join(DFS).drop(columns=['fid', 'xy', 'av', 'dummy', 'vid', 'z', 'spatial'], errors='ignore')
+        except ValueError:
+            # Exception is raised if xy does not contain 3 values,
+            # which happens in JSON file only contains unexploitables videos
+            # Create empty DataFrame with default columns to match standard csv files
+            d = pd.DataFrame(columns=['fname', 'fBase', 'fps', 'splitStart', 'splitEnd',
+                                      'exploitable', 'fire', 'sequence', 'clf_confidence',
+                                      'loc_confidence', 'x', 'y', 't', 'frame'])
 
         d = d.dropna(how='all', subset=['fire', 'exploitable'])\
              .fillna({'exploitable': True}).sort_values(['fname', 't'])
 
         # Convert time to frame
-        d['frame'] = np.round(d.fps * d.t.fillna(0)) + d.splitStart.fillna(0) 
+        d['frame'] = np.round(d.fps * d.t.fillna(0)) + d.splitStart.fillna(0)
 
         # Reject invalid keypoints
         # FIXME: frame == splitEnd can remove end of sequence.
